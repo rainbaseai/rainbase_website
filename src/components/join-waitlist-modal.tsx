@@ -20,7 +20,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { supabase, type WaitlistEntry } from "@/lib/supabase";
 import toast from "react-hot-toast";
 
 interface JoinWaitlistModalProps {
@@ -110,32 +109,39 @@ export function JoinWaitlistModal({ children }: JoinWaitlistModalProps) {
         }
 
         try {
-            // Prepare data for Supabase
-            const waitlistData: Omit<WaitlistEntry, 'id' | 'created_at'> = {
+            // Prepare data for API
+            const waitlistData = {
                 email: formData.email.trim().toLowerCase(),
                 full_name: formData.fullName.trim(),
-                usage_type: formData.usageType as 'personal' | 'team',
+                usage_type: formData.usageType,
                 ...(formData.usageType === 'team' && {
                     team_members: Number(formData.teamMembers),
                     company_name: formData.companyName.trim(),
                 }),
             };
 
-            // Submit to Supabase
-            const { error } = await supabase
-                .from('waitlist')
-                .insert([waitlistData]);
+            // Submit to API
+            const response = await fetch('https://identity.rainbase.ai/waitlist', {
+                method: 'POST',
+                headers: {
+                    'accept': 'application/json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(waitlistData),
+            });
 
-            if (error) {
-                // Handle duplicate email error specifically
-                if (error.code === '23505') {
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+
+                // Handle duplicate email or other errors
+                if (response.status === 409 || errorData.detail?.includes('already')) {
                     setErrors(prev => ({
                         ...prev,
                         email: "This email is already on our waitlist"
                     }));
                     toast.error("This email is already on our waitlist");
                 } else {
-                    console.error('Supabase error:', error);
+                    console.error('API error:', errorData);
                     toast.error("Something went wrong. Please try again.");
                 }
                 setIsSubmitting(false);
